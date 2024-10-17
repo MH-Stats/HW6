@@ -1,0 +1,288 @@
+---
+title: "HW6"
+author: "Mark Heinen"
+format: html
+execute:
+  error: true
+  warning: false
+editor: visual
+editor_options: 
+  chunk_output_type: inline
+---
+
+## Task 1: Conceptual Questions
+
+1.  The lapply() function is used to apply functions to a list. Specifically, it takes the function you want to apply and applies it to each element inside the list, then it returns the results back as a list. The purrr equivalent is map(), but it is slightly different in similar vein to how tibbles are different than BaseR data frames.
+2.  
+
+```{r}
+cor_summary <- function(my_list) {
+  lapply(my_list, function(x) cor(x, method = "kendall"))
+}
+```
+
+3.  The advantage to using map() is that the 'helpers' are more concise than their lapply() counterparts, and provides convenient map() variants like map2() which allows you to map over x and y simultaneously. One disadvantage to using map() is that it is slightly slower than lapply().
+4.  A side-effect function is a function that does not directly mainpulate the data, such as print() or plot(). Instead the function produces something based off the data provided, for example the plot() function is used to produce plots/graphs of the data supplied to it and does not change anything about the data provided.
+5.  It does not cause any issues because R uses two types of scoping: lexical scoping and dynamic scoping. In this case lexical scoping is being used by R, which means that R looks up the symbol values based on how the function was orginally nested when created not when it is being called. When your calling 'sd' in your function it is refering to the object in the current environment not the global one. Functions act as an environment of their own, that is why if you were to make a vector, such as x \<- 10 inside the function when you try to print x outside the function you will get an error message telling you the object was not found.
+
+## Task 2: Writing R Functions
+
+1.  
+
+```{r}
+#Creating function to get RMSE
+getRMSE <- function(resp, pred, ...){
+  square <- (resp - pred)^2 
+  mean <- mean(square, ...)
+  return(sqrt(mean))
+}
+```
+
+2.  
+
+```{r}
+#Creating data to test
+set.seed(10)
+n <- 100
+x <- runif(n)
+resp <- 3 + 10 * x + rnorm(n)
+pred <- predict(lm(resp ~ x), data.frame(x))
+
+#Testing without additional argument
+getRMSE(resp, pred)
+
+#turning response values to NA
+resp[1:2] <- NA_real_
+#testing function with NA argument
+getRMSE(resp, pred, na.rm = TRUE)
+```
+
+3.  
+
+```{r}
+#Creating function to get mean absolute error
+getMAE <- function(resp, pred, ...){
+  abs_val <- abs(resp - pred)
+  mean(abs_val, ...)
+}
+```
+
+4.  
+
+```{r}
+#Rerunning code to create sample dataset 
+set.seed(10)
+n <- 100
+x <- runif(n)
+resp <- 3 + 10 * x + rnorm(n)
+pred <- predict(lm(resp ~ x), data.frame(x))
+
+#Testing function
+getMAE(resp, pred)
+
+#turning response values to NA
+resp[1:2] <- NA_real_
+#testing function with NA argument
+getMAE(resp, pred, na.rm = TRUE)
+```
+
+5.  
+
+```{r}
+#Creating wrapper function that can call both getRMSE() and getMAE()
+wrapper <- function(resp, pred, getRMSE = "TRUE", getMAE = "TRUE", ...){
+  num_vars <- c(resp, pred)
+  if(!is.numeric(num_vars) || !is.atomic(num_vars) || !is.vector(num_vars) ){
+    stop("response & prediction must be a numeric (atomic) vector")
+  }
+  if(getRMSE){
+    RMSE <- getRMSE(resp, pred, ...)
+    cat("RMSE", RMSE, " ")
+  }
+  if(getMAE){
+    MAE <- getMAE(resp, pred, ...)
+    cat("MAE", MAE)
+  }
+}
+#Recreating data
+set.seed(10)
+n <- 100
+x <- runif(n)
+resp <- 3 + 10 * x + rnorm(n)
+pred <- predict(lm(resp ~ x), data.frame(x))
+
+#Running wrapper for getRMSE only
+wrapper(resp, pred, getMAE = FALSE)
+
+#Running wrapper for getMAE only
+wrapper(resp, pred, getRMSE = FALSE)
+
+#creating null observations
+resp[1:2] <- NA_real_
+#running wrapper with null observations
+wrapper(resp, pred, na.rm = TRUE)
+
+#Running incorrect data type through wrapper
+df <- iris #loading in iris dataset
+wrapper(iris, pred)
+```
+
+## Task 3: Querying an API and a Tidy-Style Function
+
+1.  
+
+```{r}
+#Loading in httr, jsonlite, and purrr package
+library(httr)
+library(purrr)
+library(jsonlite)
+library(tidyverse)
+library(lubridate)
+```
+
+```{r}
+#Using GET() to query info on NDAs
+NDA_temp <- GET("https://newsapi.org/v2/everything?q=NDAs&from=2024-09-17&apiKey=bed510d4bd934eb19f33549204a85dba")
+```
+
+2.  
+
+```{r}
+#Parsing the data and using pluck to grab articles
+NDA_art  <- NDA_temp$content |> 
+  rawToChar() |> 
+  fromJSON() |>
+  pluck("articles")
+
+#Checking if first column is a list column
+NDA_art[, 1]
+
+```
+
+3.
+
+```{r}
+#Creating API query function
+news_query <- function(topic = "NDAs", time = "2024-09-17", api_key = "bed510d4bd934eb19f33549204a85dba" ){
+  
+  #Creating URl to use for GET()
+  url_base <- "https://newsapi.org/v2/everything?"
+  url <- paste0(url_base, "q=", topic, "&from=", time, "&apiKey=", api_key)
+  data <- GET(url)
+  
+  #Parsing the data and using pluck()
+  data <- data$content |>
+    rawToChar() |> 
+    fromJSON() |>
+    pluck("articles")
+  
+  return(data)
+  
+}
+
+#Creating object of NDAs as topic
+NDA_data <- news_query()
+
+#creating object with non-competes as topic and date as being from october 2nd 2024
+compete_data <- news_query(topic = "non-competes", time = "2024-10-02")
+```
+
+4. 
+
+```{r}
+#Creating object of just the source variable and making name into a factor
+NDA_df <- NDA_data$source |>
+  mutate(name = as.factor(name))
+
+#Creating one-way contingency table for name
+table("Name of source summary" = NDA_df$name)
+
+```
+
+5. 
+
+```{r}
+#Creating a date column for NDA_Data with separate_wider_delim
+date_function <- function(data){ 
+  wide_data <- separate_wider_delim(data, 
+                                    cols = c("publishedAt"), 
+                                    delim = "T", 
+                                    names = c("date", "time"), 
+                                    too_few = "debug", 
+                                    names_repair = "unique", 
+                                    too_many = "drop") 
+  
+  #selecting the date column then using ymd
+  wide_data <- wide_data |>
+    select(date) |>
+    mutate(published_at = ymd(date)) 
+  
+  #adding column to data frame
+  data <- cbind(data, wide_data)
+  
+  return(data)
+}
+
+#Running the function
+NDA_dates <- date_function(NDA_data)
+compete_dates <- date_function(compete_data)
+
+#removing publishedAT
+NDA_dates <- NDA_dates |>
+  select(-publishedAt, -date)
+compete_dates <- compete_dates |>
+  select(-publishedAt, -date)
+
+#sorting date frames by new parsed date and creating new variable
+NDA_dates <- NDA_dates|>
+  arrange(published_at)
+compete_dates <- compete_dates |>
+  arrange(published_at)
+
+#creating new data frames to include pub_diff
+diff_NDA <- NDA_dates |>
+  mutate(pub_diff = published_at - lag(published_at))
+diff_NDA <- diff_NDA |>
+  mutate(pub_diff = as.numeric(pub_diff))
+diff_compete <- compete_dates |>
+  mutate(pub_diff = published_at - lag(published_at))
+diff_compete <- diff_compete |>
+  mutate(pub_diff = as.numeric(pub_diff))
+```
+
+6.
+
+```{r}
+#subsetting the data
+diff_NDA <- diff_NDA |>
+  select(published_at, pub_diff)
+diff_compete <- diff_compete |>
+  select(published_at, pub_diff)
+
+#creating function to use map() to get summary stats
+map_function <- function(x, col = "published_at"){
+  funs <- list(mean = mean, median = median, sd = sd) 
+  map(funs, function(f) f(x[[col]], na.rm = TRUE))
+}
+#running function for each column
+map_function(diff_NDA)
+map_function(diff_NDA, col = "diff_pub")
+map_function(diff_NDA)
+map_function(diff_NDA, col = "diff_pub")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
